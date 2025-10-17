@@ -1,0 +1,72 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# package manager locks (keep one if your team standardizes on it)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+bun.lock
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+/.turbo
+/.swc
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+.env.*
+.VSCodium/**
+.vscode/**
+.idea/**
+*.log
+*.log.*
+*.pid
+*.pid.lock
+*.seed
+*.tsbuildinfo
+*.coverage
+coverage/**
+tmp/**
+temp/**
+dist/**
+build/**
+*.local
+*.cache
+/.cache/**
+/.eslintcache
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
