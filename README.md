@@ -1,7 +1,7 @@
 LAN Hub – Secure Local Collaboration
 ===================================
 
-A LAN-first collaboration app that lets users on the same network chat, create rooms, and share files with optional end‑to‑end encryption (E2EE) – all without a server database.
+A LAN-first collaboration app that lets users on the same network chat, create rooms, and share files with optional end‑to‑end encryption (E2EE) – all without a server database & NO INTERNET.
 
 ## Screenshots
 
