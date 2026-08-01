@@ -81,13 +81,13 @@ export async function importAesJwk(jwk: JWK): Promise<CryptoKey> {
 
 export async function importAesRaw(raw: Uint8Array): Promise<CryptoKey> {
   if (!hasSubtle()) throw new Error('WebCrypto SubtleCrypto unavailable');
-  return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, true, ["encrypt", "decrypt"]);
+  return crypto.subtle.importKey("raw", raw as BufferSource, { name: "AES-GCM" }, true, ["encrypt", "decrypt"]);
 }
 
 export async function aesEncryptBytes(key: CryptoKey, data: Uint8Array): Promise<{ nonceB64: string; ctB64: string }>{
   if (!hasSubtle()) throw new Error('WebCrypto SubtleCrypto unavailable');
   const nonce = randomBytes(12);
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, key, data);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce as BufferSource }, key, data as BufferSource);
   return { nonceB64: bytesToBase64(nonce), ctB64: bytesToBase64(new Uint8Array(ct)) };
 }
 
@@ -95,7 +95,7 @@ export async function aesDecryptBytes(key: CryptoKey, ctB64: string, nonceB64: s
   if (!hasSubtle()) throw new Error('WebCrypto SubtleCrypto unavailable');
   const nonce = base64ToBytes(nonceB64);
   const ct = base64ToBytes(ctB64);
-  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce }, key, ct);
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce as BufferSource }, key, ct as BufferSource);
   return new Uint8Array(pt);
 }
 
@@ -153,9 +153,9 @@ async function deriveSharedBits(privateJwk: JWK, otherPublicJwk: JWK): Promise<U
 
 async function deriveAesFromShared(shared: Uint8Array, salt: Uint8Array, infoLabel = "lanhub-roomkey-v1"): Promise<CryptoKey> {
   if (!hasSubtle()) throw new Error('WebCrypto SubtleCrypto unavailable');
-  const baseKey = await crypto.subtle.importKey("raw", shared, "HKDF", false, ["deriveKey"]);
+  const baseKey = await crypto.subtle.importKey("raw", shared as BufferSource, "HKDF", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt, info: utf8Encode(infoLabel) },
+    { name: "HKDF", hash: "SHA-256", salt: salt as BufferSource, info: utf8Encode(infoLabel) as BufferSource },
     baseKey,
     { name: "AES-GCM", length: 256 },
     false,

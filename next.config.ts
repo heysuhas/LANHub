@@ -14,9 +14,13 @@ const DEV_PORT = Number(process.env.PORT || 3000);
 const lanIPs = Object.values(os.networkInterfaces())
   .flat()
   .filter((i) => i && i.family === 'IPv4' && !i.internal)
-  .map((i) => i.address);
+  .map((i) => i?.address);
 
-const lanOrigins = lanIPs.map((ip) => `http://${ip}:${DEV_PORT}`);
+const lanOrigins = lanIPs.flatMap((ip) => [
+  `http://${ip}:3000`,
+  `http://${ip}:8080`,
+  `http://${ip}:${DEV_PORT}`,
+]);
 
 const nextConfig = {
   images: {

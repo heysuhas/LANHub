@@ -1,0 +1,17 @@
+{
+  "id": "presence",
+  "name": "Presence Hub",
+  "version": "1.0.0",
+  "minCoreVersion": "1.0.0",
+  "description": "Real-time LAN device discovery, online peer tracking, and active resource status",
+  "author": "LANHub Team",
+  "permissions": ["events", "transport", "ui", "identity"],
+  "contributes": {
+    "sidebar": {
+      "id": "presence",
+      "label": "Presence",
+      "icon": "Activity",
+      "order": 1
+    }
+  }
+}

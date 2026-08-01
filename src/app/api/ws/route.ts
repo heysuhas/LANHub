@@ -8,7 +8,7 @@ let onlineUsers = new Map<string, any>();
 let deviceRegistry = new Map<string, any>();
 // Pending key update envelopes per-user (delivered via heartbeat)
 let keyUpdates = new Map<string, any[]>();
-// In-memory chat rooms
+// In-memory chat rooms (pre-seeded with General Chat)
 let rooms = new Map<string, {
   id: string;
   name: string;
@@ -17,7 +17,17 @@ let rooms = new Map<string, {
   createdAt: number;
   isPublic: boolean;
   admins?: string[];
-}>();
+}>([
+  ['general', {
+    id: 'general',
+    name: 'General Chat',
+    participants: [],
+    createdBy: 'system',
+    createdAt: 0,
+    isPublic: true,
+    admins: [],
+  }]
+]);
 // In-memory encrypted file transfers (metadata + chunks)
 let fileTransfers = new Map<string, {
   id: string;
@@ -75,10 +85,19 @@ export async function POST(req: NextRequest) {
         // Use 'id' instead of 'userId' for user identifier
         onlineUsers.set(payload.id, {
           ...payload,
-          // allow clients to include ECDH public key for E2E key exchange
           publicKeyJwk: payload.publicKeyJwk,
           lastSeen: Date.now(),
           status: 'online'
+        });
+        const devId = `dev-${payload.id}`;
+        deviceRegistry.set(devId, {
+          id: devId,
+          name: `${payload.displayName}'s Device`,
+          type: 'desktop',
+          ipAddress: req.headers.get('x-forwarded-for') || 'LAN Peer',
+          userId: payload.id,
+          isOnline: true,
+          lastSeen: Date.now()
         });
         broadcast({
           type: 'user_online',
@@ -91,6 +110,7 @@ export async function POST(req: NextRequest) {
         return Response.json({ 
           success: true, 
           onlineUsers: Array.from(onlineUsers.values()),
+          devices: Array.from(deviceRegistry.values()),
           messages: messageHistory
         });
 
@@ -148,6 +168,7 @@ export async function POST(req: NextRequest) {
           fileAnnouncements: announcements,
           devices: Array.from(deviceRegistry.values()),
           rooms: Array.from(rooms.values()),
+          activeScreenShare: (globalThis as any).activeScreenShare || null,
         });
 
       case 'create_room':
@@ -329,6 +350,26 @@ export async function POST(req: NextRequest) {
           return Response.json({ success: true, index: payload.index, data: chunk.data, nonce: chunk.nonce });
         }
 
+      case 'screenshare_start':
+        (globalThis as any).activeScreenShare = {
+          hostId: payload.hostId,
+          hostName: payload.hostName,
+          signal: payload.signal,
+          updatedAt: Date.now(),
+        };
+        return Response.json({ success: true, activeScreenShare: (globalThis as any).activeScreenShare });
+
+      case 'screenshare_signal':
+        if (! (globalThis as any).screenShareSignals) (globalThis as any).screenShareSignals = new Map();
+        const map = (globalThis as any).screenShareSignals;
+        if (!map.has(payload.targetId)) map.set(payload.targetId, []);
+        map.get(payload.targetId).push(payload);
+        return Response.json({ success: true });
+
+      case 'screenshare_stop':
+        (globalThis as any).activeScreenShare = null;
+        return Response.json({ success: true });
+
       case 'get_state':
         return Response.json({
           success: true,
@@ -337,6 +378,7 @@ export async function POST(req: NextRequest) {
           lastSeq: messageSeq,
           devices: Array.from(deviceRegistry.values()),
           rooms: Array.from(rooms.values()),
+          activeScreenShare: (globalThis as any).activeScreenShare || null,
         });
 
       default:

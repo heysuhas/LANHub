@@ -1,0 +1,17 @@
+{
+  "id": "files",
+  "name": "File Sharing",
+  "version": "1.0.0",
+  "minCoreVersion": "1.0.0",
+  "description": "Fast, drag-and-drop peer-to-peer file sharing over local network",
+  "author": "LANHub Team",
+  "permissions": ["events", "transport", "storage", "notifications", "identity"],
+  "contributes": {
+    "sidebar": {
+      "id": "files",
+      "label": "File Sharing",
+      "icon": "HardDrive",
+      "order": 3
+    }
+  }
+}

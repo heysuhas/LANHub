@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { User, Device, Message, FileTransfer, ActivityLog, ChatRoom } from '@/types';
 import { storage } from '@/lib/local-storage';
+import { coreStore } from '@/core/state';
 import type { JWK } from '@/lib/crypto';
 import {
   generateECDH,
@@ -21,8 +22,28 @@ import {
   aesDecryptBytes,
   bytesToBase64,
   base64ToBytes,
+  utf8Decode,
   hasSubtle,
 } from '@/lib/crypto';
+
+export function getApiEndpoint(): string {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('lanhub_server_url');
+    if (custom) return `${custom.replace(/\/$/, '')}/api/ws`;
+  }
+  const envUrl = process.env.NEXT_PUBLIC_RELAY_URL;
+  if (envUrl) return `${envUrl.replace(/\/$/, '')}/api/ws`;
+  return '/api/ws';
+}
+
+const defaultGeneralRoom: ChatRoom = {
+  id: 'general',
+  name: 'General Chat',
+  participants: [],
+  createdBy: 'system',
+  createdAt: 0,
+  isPublic: true,
+};
 
 interface AppContextType {
   currentUser: User | null;
@@ -103,80 +124,74 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (!currentUser) return;
 
     try {
-      const response = await fetch('/api/ws', {
+      const response = await fetch(getApiEndpoint(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'heartbeat',
-          payload: { userId: currentUser.id, lastSeq }
+          payload: {
+            userId: currentUser.id,
+            lastSeq,
+          }
         })
       });
 
       const data = await response.json();
-      
       if (data.success) {
-        // Update online users from server
         if (data.onlineUsers) {
           setUsers(data.onlineUsers);
         }
 
-        // Update lastSeq if provided
         if (typeof data.lastSeq === 'number') {
           setLastSeq(data.lastSeq);
         }
 
-        // Handle pending key updates (admin distributed room key)
-        if (Array.isArray(data.keyUpdates) && userKeyPair) {
-          for (const upd of data.keyUpdates) {
-            try {
-              const { epk, saltB64, nonceB64, ctB64 } = upd.envelope || {};
-              if (epk && saltB64 && nonceB64 && ctB64) {
-                const newKey = await unpackRoomKeyFromSender(userKeyPair.privateJwk, epk, saltB64, nonceB64, ctB64);
-                setRoomKey(newKey);
-                const jwk = await exportAesJwk(newKey);
-                saveRoomKeyJwk(jwk);
-              }
-            } catch (e) {
-              console.error('Failed to unpack room key:', e);
-            }
-          }
+        if (Array.isArray(data.rooms)) {
+          const hasGeneral = data.rooms.some((r: any) => r.id === 'general');
+          const mergedRooms = hasGeneral ? data.rooms : [defaultGeneralRoom, ...data.rooms];
+          setChatRooms(mergedRooms);
+          localStorage.setItem('lanhub_chat_rooms', JSON.stringify(mergedRooms));
         }
 
-        // Update devices snapshot if provided
         if (Array.isArray(data.devices)) {
           setDevices(data.devices);
         }
-        // Update rooms snapshot if provided
-        if (Array.isArray(data.rooms)) {
-          setChatRooms(data.rooms);
-          // persist for reload
-          localStorage.setItem('lanhub_chat_rooms', JSON.stringify(data.rooms));
-        }
-        
-        // Add new messages - but filter out duplicates
+
         if (data.newMessages && data.newMessages.length > 0) {
-          const prevSnapshot = messages; // capture current state
-          const existingIds = new Set(prevSnapshot.map((m: Message) => m.id));
-          const uniqueNewMessages: Message[] = data.newMessages.filter((msg: Message) => !existingIds.has(msg.id));
-          const out: Message[] = [];
-          for (const msg of uniqueNewMessages) {
-            if (msg.enc && msg.nonce && roomKey) {
-              try {
-                const plain = await aesDecryptString(roomKey, msg.content, msg.nonce);
-                out.push({ ...msg, content: plain });
-              } catch {
-                out.push({ ...msg, content: '[Encrypted message]' });
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m: Message) => m.id));
+            const uniqueNewMessages: Message[] = data.newMessages.filter((msg: Message) => !existingIds.has(msg.id));
+            if (uniqueNewMessages.length === 0) return prev;
+
+            const out: Message[] = uniqueNewMessages.map((msg: Message) => {
+              if (msg.enc && msg.nonce && roomKey) {
+                try {
+                  const plain = utf8Decode(base64ToBytes(msg.content));
+                  return { ...msg, content: plain };
+                } catch {
+                  return msg;
+                }
               }
-            } else {
-              out.push(msg);
-            }
-          }
-          // Save and append (dedup)
-          out.forEach((m) => storage.addMessage(m));
-          setMessages(prev => mergeMessages(prev, out));
+              return msg;
+            });
+
+            out.forEach((m) => storage.addMessage(m));
+            const updated = mergeMessages(prev, out);
+            coreStore.setState({ messages: updated });
+            return updated;
+          });
         }
-        
-        // lastSeq is updated above if provided by server
+
+        coreStore.setState((prev) => {
+          const serverRooms = Array.isArray(data.rooms) ? data.rooms : prev.rooms;
+          const hasGen = serverRooms.some((r: any) => r.id === 'general');
+          const finalRooms = hasGen ? serverRooms : [defaultGeneralRoom, ...serverRooms];
+          return {
+            users: Array.isArray(data.onlineUsers) ? data.onlineUsers : prev.users,
+            devices: Array.isArray(data.devices) ? data.devices : prev.devices,
+            rooms: finalRooms,
+          };
+        });
       }
     } catch (error) {
       console.error('Sync error:', error);
@@ -223,13 +238,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Heartbeat every 2 seconds
+  // Heartbeat every 500ms (ultra-low latency sync)
   useEffect(() => {
     if (!currentUser) return;
 
     const interval = setInterval(() => {
       syncWithServer();
-    }, 2000);
+    }, 500);
 
     // Initial sync
     syncWithServer();
@@ -241,6 +256,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     // Load data from localStorage
     const savedUser = storage.getCurrentUser();
     setCurrentUser(savedUser);
+    if (savedUser) {
+      coreStore.setState({
+        currentUser: savedUser,
+        currentDevice: {
+          id: `dev-${savedUser.id}`,
+          name: `${savedUser.displayName}'s Device`,
+          type: 'desktop',
+          ipAddress: '127.0.0.1',
+          userId: savedUser.id,
+          isOnline: true,
+          lastSeen: Date.now(),
+        },
+      });
+    }
     setDevices(storage.getDevices());
     setMessages(storage.getMessages());
     setFileTransfers(storage.getFileTransfers());
@@ -324,6 +353,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       storage.updateUser(user.id, updatedUser);
       storage.setCurrentUser(updatedUser);
       setCurrentUser(updatedUser);
+      coreStore.setState({
+        currentUser: updatedUser,
+        currentDevice: {
+          id: `dev-${updatedUser.id}`,
+          name: `${updatedUser.displayName}'s Device`,
+          type: 'desktop',
+          ipAddress: '127.0.0.1',
+          userId: updatedUser.id,
+          isOnline: true,
+          lastSeen: Date.now(),
+        },
+      });
       
       // Register with server
       registerUserOnServer(updatedUser);
@@ -363,6 +404,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     storage.addUser(newUser);
     storage.setCurrentUser(newUser);
     setCurrentUser(newUser);
+    coreStore.setState({
+      currentUser: newUser,
+      currentDevice: {
+        id: `dev-${newUser.id}`,
+        name: `${newUser.displayName}'s Device`,
+        type: 'desktop',
+        ipAddress: '127.0.0.1',
+        userId: newUser.id,
+        isOnline: true,
+        lastSeen: Date.now(),
+      },
+    });
 
     // Register with server
     registerUserOnServer(newUser);
@@ -471,6 +524,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
     storage.addMessage(localMessage);
     setMessages(prev => mergeMessages(prev, [localMessage]));
+    coreStore.setState(prev => ({
+      messages: mergeMessages(prev.messages, [localMessage])
+    }));
 
     // Send to server
     try {
@@ -482,6 +538,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           payload: toSend
         })
       });
+      void syncWithServer();
     } catch (error) {
       console.error('Send message error:', error);
     }
@@ -818,7 +875,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                     for (let i = 0; i < rec.total; i++) {
                       const b = rec.buffers[i];
                       if (!b) { break; }
-                      parts.push(b);
+                      parts.push(b as any);
                     }
                     const blob = new Blob(parts, { type: 'application/octet-stream' });
                     const url = URL.createObjectURL(blob);
@@ -860,7 +917,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         recipients = room.isPublic ? undefined : room.participants;
       }
     }
-    for (const file of Array.from(files as any)) {
+    for (const file of Array.from(files as any) as any[]) {
       const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       ids.push(id);
       const chunkSize = 64 * 1024; // 64 KiB to stay well under body limits
@@ -935,6 +992,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         } catch {}
       }
     }
+    return ids;
   };
 
   // Admin operations

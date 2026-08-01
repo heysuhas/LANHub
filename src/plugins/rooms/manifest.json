@@ -1,0 +1,17 @@
+{
+  "id": "rooms",
+  "name": "Room Management",
+  "version": "1.0.0",
+  "minCoreVersion": "1.0.0",
+  "description": "Create, join, and manage public and private collaboration rooms across the LAN",
+  "author": "LANHub Team",
+  "permissions": ["events", "transport", "storage", "notifications", "identity"],
+  "contributes": {
+    "sidebar": {
+      "id": "rooms",
+      "label": "Rooms",
+      "icon": "FolderPlus",
+      "order": 4
+    }
+  }
+}

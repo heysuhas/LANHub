@@ -1,0 +1,17 @@
+{
+  "id": "chat",
+  "name": "Encrypted Chat",
+  "version": "1.0.0",
+  "minCoreVersion": "1.0.0",
+  "description": "Secure, real-time end-to-end encrypted messaging across local network rooms",
+  "author": "LANHub Team",
+  "permissions": ["events", "transport", "storage", "notifications", "identity"],
+  "contributes": {
+    "sidebar": {
+      "id": "chat",
+      "label": "Chat",
+      "icon": "MessageSquare",
+      "order": 2
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "screenshare",
+  "name": "Screen Share",
+  "version": "1.0.0",
+  "minCoreVersion": "1.0.0",
+  "description": "Direct peer-to-peer screen streaming over WebRTC for instant desktop sharing",
+  "author": "LANHub Team",
+  "permissions": ["events", "transport", "storage", "notifications", "identity"],
+  "contributes": {
+    "sidebar": {
+      "id": "screenshare",
+      "label": "Screen Share",
+      "icon": "Monitor",
+      "order": 5
+    }
+  }
+}
